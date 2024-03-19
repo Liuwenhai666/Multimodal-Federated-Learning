@@ -3,12 +3,6 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# data
-fed_multimodal/result/**
-fed_multimodal/output/**
-fed_multimodal/data/
-!fed_multimodal/data/*.sh
-
 # C extensions
 *.so
 
@@ -136,3 +130,9 @@ dmypy.json
 
 *log*
 result/*
+
+# data
+fed_multimodal/data/
+!fed_multimodal/data/*.sh
+fed_multimodal/result/**
+fed_multimodal/output/**
