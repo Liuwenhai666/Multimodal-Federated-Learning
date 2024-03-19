@@ -4,8 +4,8 @@ __pycache__/
 *$py.class
 
 # data
-data/
-!data/*.sh
+fed_multimodal/data/
+!fed_multimodal/data/*.sh
 
 # C extensions
 *.so
