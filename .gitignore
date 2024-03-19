@@ -132,7 +132,7 @@ dmypy.json
 result/*
 
 # data
-fed_multimodal/data/
+fed_multimodal/data/**
 !fed_multimodal/data/*.sh
 fed_multimodal/result/**
 fed_multimodal/output/**
