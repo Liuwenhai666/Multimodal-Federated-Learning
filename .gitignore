@@ -4,9 +4,9 @@ __pycache__/
 *$py.class
 
 # data
-result/
-output/
-fed_multimodal/data/*
+fed_multimodal/result/**
+fed_multimodal/output/**
+fed_multimodal/data/
 !fed_multimodal/data/*.sh
 
 # C extensions
