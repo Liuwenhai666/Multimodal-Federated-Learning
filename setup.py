@@ -16,16 +16,16 @@ if sys.platform.startswith("linux") and platform.machine() == "x86_64":
     requirements.append("triton==2.0.0")
 
 setup(
-    name="fed-multimodal",
+    name="MFLearning",
     py_modules=["fed_multimodal"],
     version=read_version(),
-    description="FedMultimodal: A benchmark for multimodal Federated Learning",
+    description="Multimodal-Federated-Learning",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     readme="README.md",
     python_requires=">=3.8",
-    author="Tiantian Feng, University of Southern California",
-    url="https://github.com/usc-sail/fed-multimodal",
+    author="Wenhai-Liu",
+    url="https://github.com/Liuwenhai666/Multimodal-Federated-Learning",
     license="Apache-2.0",
     packages=find_packages(exclude=["tests*"]),
     install_requires=requirements
