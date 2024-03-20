@@ -1,0 +1,7 @@
+{
+    "python.analysis.extraPaths": [
+        "./fed_multimodal/trainers",
+        "./fed_multimodal/model",
+        "./fed_multimodal/dataloader"
+    ]
+}
