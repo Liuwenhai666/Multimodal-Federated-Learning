@@ -141,7 +141,9 @@ class PartitionManager():
         elif self.args.dataset == 'uci-har':
             self.label_dict = {k: i for i, k in enumerate(np.arange(6))}
         elif self.args.dataset == 'hateful_memes':
-            self.label_dict = {k: i for i, k in enumerate(np.arange(6))}    
+            self.label_dict = {k: i for i, k in enumerate(np.arange(6))}
+        elif self.args.dataset == 'SDWPF':  # 百度风电数据集
+            self.label_dict = None
         
     def split_train_dev(
         self, 
