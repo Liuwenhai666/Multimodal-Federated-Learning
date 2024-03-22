@@ -1,4 +1,4 @@
-# Author: Tiantian Feng, USC SAIL lab, tiantiaf@usc.edu
+# Author: Wenhai Liu
 import pdb
 import glob
 import copy
@@ -8,8 +8,9 @@ import pickle
 import os, sys
 import argparse
 import numpy as np
+import pandas as pd
 import os.path as osp
-
+from sklearn.preprocessing import StandardScaler
 
 from tqdm import tqdm
 from pathlib import Path
@@ -56,86 +57,142 @@ def parse_args():
     parser.add_argument(
         "--dataset", 
         type=str,
-        default="uci-har",
+        default="SDWPF",
+        help="data set name",
+    )
+    
+    parser.add_argument(
+        "--datafile_name", 
+        type=str,
+        default="SDWPF.csv",
         help="data set name",
     )
     
     args = parser.parse_args()
     return args
 
-print("run...")
-# if __name__ == '__main__':
-#     # read args
-#     args = parse_args()
-#     alpha_str = str(args.alpha).replace('.', '')
-#     acc_output_data_path = Path(args.output_dir).joinpath('feature', 'acc', args.dataset, f'alpha{alpha_str}')
-#     gyro_output_data_path = Path(args.output_dir).joinpath('feature', 'gyro', args.dataset, f'alpha{alpha_str}')
-#     Path.mkdir(acc_output_data_path, parents=True, exist_ok=True)
-#     Path.mkdir(gyro_output_data_path, parents=True, exist_ok=True)
+def split_train_dev_test(
+    data_index: list,
+    seed: int=8
+) -> tuple[list, list, list]:
     
-#     # initialize feature processer
-#     fm = FeatureManager(args)
+    train_arr = np.arange(len(data_index))
+    np.random.seed(seed)
+    np.random.shuffle(train_arr)
     
-#     # 从 /mnt/File/my_file/2024-2/fed-multimodal/fed_multimodal/output/partition/uci-har/partition_alpha*.json
-#     # 读取data_partition.py 划分的数据
-#     partition_dict = fm.fetch_partition(alpha=args.alpha)
-#     acc_dict = copy.deepcopy(partition_dict)
-#     gyro_dict = copy.deepcopy(partition_dict)
+    train_len = int(len(data_index) * 0.7)
+    val_len = int(len(data_index) * 0.15)
+    # test_len = int(len(data_index) * 0.15)
     
-#     print('Reading data from folder: ', args.raw_data_dir)
-#     print('Total number of clients found: ', len(partition_dict.keys()))
+    # print(train_len, " ",val_len," ", test_len)
     
-#     for data_type in ['train', 'test']:
-#         data_root_path = Path(args.raw_data_dir).joinpath(args.dataset)
-#         subject_path = data_root_path.joinpath(data_type, 'subject_'+data_type+'.txt')
-#         data_path = data_root_path.joinpath(data_type, 'Inertial Signals')
-#         client_id_data = np.genfromtxt(str(subject_path), dtype=int)
+    train_index = [data_index[idx] for idx in train_arr[:train_len]]
+    val_index = [data_index[idx] for idx in train_arr[train_len:train_len + val_len]]
+    test_index = [data_index[idx] for idx in train_arr[train_len + val_len:]]
+    
+    return train_index, val_index, test_index
+
+if __name__ == '__main__':
+    
+    # 加载命令行参数
+    args = parse_args()
+    output_data_path = Path(args.output_dir).joinpath("feature",args.dataset)
+    Path.mkdir(output_data_path, parents=True, exist_ok=True)
+    
+    agg_batch = 12  # 两个小时
+    model1_output_data_path = Path(args.output_dir).joinpath('feature', 'model1', args.dataset, f'alpha{agg_batch}')
+    model2_output_data_path = Path(args.output_dir).joinpath('feature', 'model2', args.dataset, f'alpha{agg_batch}')
+    Path.mkdir(model1_output_data_path, parents=True, exist_ok=True)
+    Path.mkdir(model2_output_data_path, parents=True, exist_ok=True)
+    
+    # 特征提取工具
+    fm = FeatureManager(args)
+    
+    df = pd.read_csv(str(Path(args.raw_data_dir).joinpath(args.dataset, args.datafile_name)))
+    df.fillna(method="backfill", inplace=True)
+    df.fillna(method="pad",inplace=True)
+    # 删除 Day 和 Tmstamp 两列
+    # df.drop(columns=["Day", "Tmstamp"], inplace=True)
+    # 按 TurbID 分组
+    groups = df.groupby("TurbID")
+
+    # 将分组后的数据格式转换成 NumPy
+    data_by_turbid = {
+        turbid: group.drop(columns=["TurbID", "Day", "Tmstamp"])    # 删除 Day 和 Tmstamp 两列
+        for turbid, group in groups
+    }
+
+    print("数据总个数为:", int(df.shape[0] // agg_batch))
+    print("客户端个数为:", int(len(data_by_turbid)))
+
+    # 多模态数据分类
+    model1_dict = {}
+    model2_dict = {}
+    # 规范化数据，处理预测值
+    for turbid, data in tqdm(data_by_turbid.items()):
+        data_by_turbid[turbid]["Patv"] = data_by_turbid[turbid]["Patv"].groupby(np.arange(len(data_by_turbid[turbid])) // agg_batch).transform("mean")
+        scaler = StandardScaler()
+        data_by_turbid[turbid][['Wspd', 'Wdir', 'Etmp', 'Itmp', 'Ndir', 'Pab1', 'Pab2', 'Pab3', 'Prtv']] = scaler.fit_transform(data_by_turbid[turbid][['Wspd', 'Wdir', 'Etmp', 'Itmp', 'Ndir', 'Pab1', 'Pab2', 'Pab3', 'Prtv']])
+        data_by_turbid[turbid] = data_by_turbid[turbid][['Wspd','Etmp','Itmp','Prtv','Wdir','Ndir','Pab1','Pab2','Pab3','Patv']].reset_index(drop=True)
         
-#         # read labels
-#         labels = np.genfromtxt(str(data_root_path.joinpath(data_type, 'y_'+data_type+'.txt')), dtype=float)-1
-#         # read acc
-#         acc_x = np.genfromtxt(str(data_path.joinpath('body_acc_x_'+data_type+'.txt')), dtype=float)
-#         acc_y = np.genfromtxt(str(data_path.joinpath('body_acc_y_'+data_type+'.txt')), dtype=float)
-#         acc_z = np.genfromtxt(str(data_path.joinpath('body_acc_z_'+data_type+'.txt')), dtype=float)
-#         # read gyro
-#         gyro_x = np.genfromtxt(str(data_path.joinpath('body_gyro_x_'+data_type+'.txt')), dtype=float)
-#         gyro_y = np.genfromtxt(str(data_path.joinpath('body_gyro_y_'+data_type+'.txt')), dtype=float)
-#         gyro_z = np.genfromtxt(str(data_path.joinpath('body_gyro_z_'+data_type+'.txt')), dtype=float)
+        # 预测之后两个小时的发电量
+        for i in range(data_by_turbid[turbid].shape[0]):
+            
+            if i % agg_batch != 0: continue
+            if i > data_by_turbid[turbid].shape[0] - agg_batch + 1: break
+            
+            # print(i-agg_batch,i-1)
+            data_by_turbid[turbid].loc[i-agg_batch:i-1,"Patv"] = data_by_turbid[turbid].at[i,"Patv"]
+            
+        model1_dict[turbid] = data_by_turbid[turbid][['Wspd','Etmp','Itmp','Prtv','Patv']].to_numpy()
+        model2_dict[turbid] = data_by_turbid[turbid][['Wdir','Ndir','Pab1','Pab2','Pab3','Patv']].to_numpy()
+        
+    model1_dict_train = []
+    model2_dict_train = []
+    model1_dict_val = []
+    model2_dict_val = []
+    model1_dict_test = []
+    model2_dict_test = []
+        
+    len_total = len(model1_dict[1]) // 12
+    for i, _ in tqdm(model1_dict.items()):
+        model1_dict_train.append(list())
+        model2_dict_train.append(list())
+        model1_dict_val.append(list())
+        model2_dict_val.append(list())
+        model1_dict_test.append(list())
+        model2_dict_test.append(list())
+        train_index, val_index, test_index = split_train_dev_test(np.arange(len_total))
+        
+        for j in train_index:
+            tmp1 = [i, model1_dict[i][j*agg_batch,4], model1_dict[i][j*agg_batch:(j+1)*agg_batch,0:4]]
+            tmp2 = [i, model2_dict[i][j*agg_batch,5], model2_dict[i][j*agg_batch:(j+1)*agg_batch,0:5]]
+            model1_dict_train[i-1].append(tmp1)
+            model2_dict_train[i-1].append(tmp2)
+            
+        for j in test_index:
+            tmp1 = [i, model1_dict[i][j*agg_batch,4], model1_dict[i][j*agg_batch:(j+1)*agg_batch,0:4]]
+            tmp2 = [i, model2_dict[i][j*agg_batch,5], model2_dict[i][j*agg_batch:(j+1)*agg_batch,0:5]]
+            model1_dict_test[i-1].append(tmp1)
+            model2_dict_test[i-1].append(tmp2)
+            
+        for j in val_index:
+            tmp1 = [i, model1_dict[i][j*agg_batch,4], model1_dict[i][j*agg_batch:(j+1)*agg_batch,0:4]]
+            tmp2 = [i, model2_dict[i][j*agg_batch,5], model2_dict[i][j*agg_batch:(j+1)*agg_batch,0:5]]
+            model1_dict_val[i-1].append(tmp1)
+            model2_dict_val[i-1].append(tmp2)
+            
+        with open(model1_output_data_path.joinpath(f'{i}.pkl'), 'wb') as handle:
+            pickle.dump(model1_dict_train[i-1], handle, protocol=pickle.HIGHEST_PROTOCOL)
+        with open(model2_output_data_path.joinpath(f'{i}.pkl'), 'wb') as handle:
+            pickle.dump(model2_dict_train[i-1], handle, protocol=pickle.HIGHEST_PROTOCOL)
     
-#         # extract data
-#         print(f'Extract feature {data_type}')
-#         for client_id in tqdm(acc_dict):
-#             # skip condition
-#             if client_id == 'test' and data_type != 'test': continue
-#             if data_type == 'test' and client_id != 'test': continue
-#             # iterate over keys
-#             for idx in range(len(acc_dict[client_id])):
-#                 # pdb.set_trace()
-#                 # 0. initialize acc, gyro data
-#                 data_idx = acc_dict[client_id][idx][1]
-#                 acc_features, gyro_features = np.zeros([128, 3]), np.zeros([128, 3])
-#                 # 1.1 read acc data
-#                 acc_features[:, 0] = acc_x[data_idx, :]
-#                 acc_features[:, 1] = acc_y[data_idx, :]
-#                 acc_features[:, 2] = acc_z[data_idx, :]
-#                 # 1.2 normalize acc data
-#                 # pdb.set_trace()
-#                 mean, std = np.mean(acc_features, axis=0), np.std(acc_features, axis=0)
-#                 acc_features = (acc_features - mean) / (std + 1e-5)
-#                 acc_dict[client_id][idx].append(copy.deepcopy(acc_features))
-                
-#                 # 2.1 read gyro data
-#                 gyro_features[:, 0] = gyro_x[data_idx, :]
-#                 gyro_features[:, 1] = gyro_y[data_idx, :]
-#                 gyro_features[:, 2] = gyro_z[data_idx, :]
-#                 # 2.2 normalize gyro data
-#                 mean, std = np.mean(gyro_features, axis=0), np.std(gyro_features, axis=0)
-#                 gyro_features = (gyro_features - mean) / (std + 1e-5)
-#                 gyro_dict[client_id][idx].append(copy.deepcopy(gyro_features))
-                
-#             # very important: final feature output format
-#             # [key, idx, label, feature]
-#             with open(acc_output_data_path.joinpath(f'{client_id}.pkl'), 'wb') as handle:
-#                 pickle.dump(acc_dict[client_id], handle, protocol=pickle.HIGHEST_PROTOCOL)
-#             with open(gyro_output_data_path.joinpath(f'{client_id}.pkl'), 'wb') as handle:
-#                 pickle.dump(gyro_dict[client_id], handle, protocol=pickle.HIGHEST_PROTOCOL)
+    with open(model1_output_data_path.joinpath('test.pkl'), 'wb') as handle:
+        pickle.dump(model1_dict_test, handle, protocol=pickle.HIGHEST_PROTOCOL)    
+    with open(model1_output_data_path.joinpath('dev.pkl'), 'wb') as handle:
+        pickle.dump(model1_dict_val, handle, protocol=pickle.HIGHEST_PROTOCOL)  
+        
+    with open(model2_output_data_path.joinpath('test.pkl'), 'wb') as handle:
+        pickle.dump(model2_dict_test, handle, protocol=pickle.HIGHEST_PROTOCOL)  
+    with open(model2_output_data_path.joinpath('dev.pkl'), 'wb') as handle:
+        pickle.dump(model2_dict_val, handle, protocol=pickle.HIGHEST_PROTOCOL)  

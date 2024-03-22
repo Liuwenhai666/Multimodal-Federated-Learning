@@ -16,8 +16,8 @@ def data_partition(args: dict):
     for i, y in args.__dict__.items():
         arg_call.append(str(i))
         arg_call.append(str(y))
+    print("data_partition.py call extract_feature.py ...")
     subprocess.call(arg_call)
-
 
 if __name__ == "__main__":
 
