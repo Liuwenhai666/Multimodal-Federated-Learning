@@ -13,7 +13,7 @@ from pathlib import Path
 
 from fed_multimodal.constants import constants
 from fed_multimodal.trainers.server_trainer import Server
-from fed_multimodal.model.mm_models import HARClassifier
+from fed_multimodal.model.mm_models import SDWPFRegression
 from fed_multimodal.dataloader.dataload_manager import DataloadManager
 
 from fed_multimodal.trainers.fed_rs_trainer import ClientFedRS
@@ -60,16 +60,30 @@ def parse_args():
         help='output feature directory'
     )
     
+    # parser.add_argument(
+    #     '--acc_feat', 
+    #     default='acc',
+    #     type=str,
+    #     help="acc feature name",
+    # )
+    
+    # parser.add_argument(
+    #     '--gyro_feat', 
+    #     default='gyro',
+    #     type=str,
+    #     help="gyro feature name",
+    # )
+    
     parser.add_argument(
-        '--acc_feat', 
-        default='acc',
+        '--model1_feat', 
+        default='model1',
         type=str,
         help="acc feature name",
     )
     
     parser.add_argument(
-        '--gyro_feat', 
-        default='gyro',
+        '--model2_feat', 
+        default='model2',
         type=str,
         help="gyro feature name",
     )
@@ -154,7 +168,7 @@ def parse_args():
     parser.add_argument(    # Direchlet 分布中的 α,生成No-iid数据时使用
         "--alpha",
         type=float,
-        default=1.0,
+        default=None,
         help="alpha in direchlet distribution",
     )
     
@@ -244,7 +258,7 @@ def parse_args():
     parser.add_argument(
         "--dataset", 
         type=str, 
-        default="uci-har",
+        default="SDWPF",
         help='data set name'
     )
 
@@ -254,6 +268,14 @@ def parse_args():
         default='multimodal',
         help='modality type'
     )
+    
+    parser.add_argument(
+        '--agg_batch', 
+        type=int, 
+        default=12,
+        help='时间长度, 每一个单位1为10分钟'
+    )
+    
     args = parser.parse_args()
     return args
 
@@ -279,6 +301,7 @@ if __name__ == '__main__':
         Client = ClientScaffold
     elif args.fed_alg in ['fed_rs']:
         Client = ClientFedRS
+    logging.info("联邦学习算法:" + f"{args.fed_alg}")
 
     # 如果设置了缺失模态、标签，添加噪声，load simulation feature
     dm.load_sim_dict()
@@ -286,70 +309,60 @@ if __name__ == '__main__':
     dm.get_client_ids()
     # set dataloaders
     dataloader_dict = dict()
-    logging.info('Reading Data')
+    logging.info("加载数据.")
     
     # 为每个客户端，加载数据集
     for client_id in tqdm(dm.client_ids):
-        acc_dict = dm.load_acc_feat(
-            client_id=client_id
-        )
-        gyro_dict = dm.load_gyro_feat(
-            client_id=client_id
-        )
-        dm.get_label_dist(
-            gyro_dict, 
-            client_id
-        )
+        model1_dict = dm.load_baidukdd_model1_feat(client_id)
+        model2_dict = dm.load_baidukdd_model2_feat(client_id)
         
-        shuffle = False if client_id in ['dev', 'test'] else True 
+        shuffle = False if client_id in ['dev', 'test'] else True
+        # 目前未使用
         client_sim_dict = None if client_id in ['dev', 'test'] else dm.get_client_sim_dict(client_id=client_id)
         
         dataloader_dict[client_id] = dm.set_dataloader(
-            acc_dict,
-            gyro_dict, 
-            shuffle=shuffle,
+            model1_dict,
+            model2_dict,
             client_sim_dict=client_sim_dict,
-            default_feat_shape_a=np.array([128, constants.feature_len_dict[args.acc_feat]]),
-            default_feat_shape_b=np.array([128, constants.feature_len_dict[args.gyro_feat]]),
+            default_feat_shape_a=np.array([12, 4]),
+            default_feat_shape_b=np.array([12, 5]) 
         )
-    
-    # We perform 5 fold experiments with 5 seeds
+        
     for fold_idx in range(1, 6):
-        # number of clients
         client_ids = [client_id for client_id in dm.client_ids if client_id not in ['dev', 'test']]
+        
         num_of_clients = len(client_ids)
         logging.info("num_of_clients: " + str(num_of_clients))
         
-        # set seeds
         set_seed(8*fold_idx)
-        # loss function
-        criterion = nn.NLLLoss().to(device)
-        # Define the model
-        global_model = HARClassifier(
-            num_classes=constants.num_class_dict[args.dataset],         # Number of classes 
-            acc_input_dim=constants.feature_len_dict[args.acc_feat],    # Acc data input dim
-            gyro_input_dim=constants.feature_len_dict[args.gyro_feat],  # Gyro data input dim
-            en_att=args.att,                                            # Enable self attention or not
+        
+        criterion = nn.MSELoss().to(device)
+        
+        # 网络模型
+        global_model = SDWPFRegression(
+            model1_input_dim=4,
+            model2_input_dim=5,
+            en_att=args.att,
             d_hid=args.hid_size,
             att_name=args.att_name
         )
         global_model = global_model.to(device)
-
+        
         # initialize server
         server = Server(
             args, 
             global_model, 
             device=device, 
             criterion=criterion,    # 损失函数
-            client_ids=client_ids
+            client_ids=client_ids 
         )
-        server.initialize_log(fold_idx) # 初始化 log_path 和 result_path
+        
+        server.initialize_log(fold_idx)
         server.sample_clients(
-            num_of_clients, 
+            num_of_clients,
             sample_rate=args.sample_rate
         )
         server.get_num_params()
-
         # save json path
         save_json_path = Path(os.path.realpath(__file__)).parents[2].joinpath(
             'result', 
@@ -360,117 +373,8 @@ if __name__ == '__main__':
             server.model_setting_str
         )
         Path.mkdir(save_json_path, parents=True, exist_ok=True)
-    
-        server.save_json_file(  # 保存每个人-客户端中的每个类别的数量
-            dm.label_dist_dict, 
-            save_json_path.joinpath('label.json')
-        )
         
-        # set seeds again
+        # 再次设置随机数种子
         set_seed(8*fold_idx)
-        # Training steps
-        for epoch in range(int(args.num_epochs)):
-            # define list varibles that saves the weights, loss, num_sample, etc.
-            server.initialize_epoch_updates(epoch)
-            # 1. 本地训练，fed_avg中的返回权重，fed_sgd中的返回梯度
-            skip_client_ids = list()
-            for idx in server.clients_list[epoch]:
-                # Local training
-                client_id = client_ids[idx]
-                dataloader = dataloader_dict[client_id]
-                if dataloader is None:
-                    skip_client_ids.append(client_id)
-                    continue
-
-                # Initialize client object
-                client = Client(
-                    args, 
-                    device, 
-                    criterion, 
-                    dataloader, 
-                    model=copy.deepcopy(server.global_model),
-                    label_dict=dm.label_dist_dict[client_id],
-                    num_class=constants.num_class_dict[args.dataset]
-                )
-
-                if args.fed_alg == 'scaffold':
-                    client.set_control(
-                        server_control=copy.deepcopy(server.server_control), 
-                        client_control=copy.deepcopy(server.client_controls[client_id])
-                    )
-                    client.update_weights()
-
-                    # server append updates
-                    server.set_client_control(client_id, copy.deepcopy(client.client_control))
-                    server.save_train_updates(
-                        copy.deepcopy(client.get_parameters()), 
-                        client.result['sample'], 
-                        client.result,
-                        delta_control=copy.deepcopy(client.delta_control)
-                    )
-                else:
-                    client.update_weights()
-                    # server append updates
-                    server.save_train_updates(
-                        copy.deepcopy(client.get_parameters()), 
-                        client.result['sample'], 
-                        client.result
-                    )
-                del client
-            
-            # logging skip client
-            logging.info(f'Client Round: {epoch}, Skip client {skip_client_ids}')
-            
-            # 2. 聚合，加载新的全局权重
-            if len(server.num_samples_list) == 0: continue
-            server.average_weights()
-            logging.info('---------------------------------------------------------')
-            server.log_classification_result(
-                data_split='train',
-                metric='f1'
-            )
-            if epoch % args.test_frequency == 0:
-                with torch.no_grad():
-                    # 3. Perform the validation on dev set
-                    server.inference(dataloader_dict['dev'])
-                    server.result_dict[epoch]['dev'] = server.result
-                    server.log_classification_result(
-                        data_split='dev',
-                        metric='f1'
-                    )
-
-                    # 4. Perform the test on holdout set
-                    server.inference(dataloader_dict['test'])
-                    server.result_dict[epoch]['test'] = server.result
-                    server.log_classification_result(
-                        data_split='test',
-                        metric='f1'
-                    )
-                
-                logging.info('---------------------------------------------------------')
-                server.log_epoch_result(metric='f1')
-            logging.info('---------------------------------------------------------')
-
-        # Performance save code
-        save_result_dict[f'fold{fold_idx}'] = server.summarize_dict_results()
         
-        # output to results
-        server.save_json_file(
-            save_result_dict, 
-            save_json_path.joinpath('result.json')
-        )
-
-    # Calculate the average of the 5-fold experiments
-    save_result_dict['average'] = dict()
-    for metric in ['f1', 'acc', 'top5_acc']:
-        result_list = list()
-        for key in save_result_dict:
-            if metric not in save_result_dict[key]: continue
-            result_list.append(save_result_dict[key][metric])
-        save_result_dict['average'][metric] = np.nanmean(result_list)
-    
-    # dump the dictionary
-    server.save_json_file(
-        save_result_dict, 
-        save_json_path.joinpath('result.json')
-    )
+        

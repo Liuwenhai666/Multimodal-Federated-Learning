@@ -157,6 +157,14 @@ class Server(object):
                 self.feature = f'{self.args.audio_feat}'
             elif self.args.modality == "video":
                 self.feature = f'{self.args.video_feat}'
+        elif self.args.dataset in ['SDWPF']:
+            if self.args.modality == "multimodal":
+                self.feature = f'{self.args.model1_feat}_{self.args.model2_feat}'
+            elif self.args.modality == "model1":
+                self.feature = f'{self.args.model1_feat}'
+            elif self.args.modality == "model2":
+                self.feature = f'{self.args.model2_feat}'
+            model_setting_str += 'alpha'+str(self.args.agg_batch)
         else:
             raise ValueError(f'Data set not support {self.args.dataset}')
         # training settings: local epochs, learning rate, batch size, client sample rate

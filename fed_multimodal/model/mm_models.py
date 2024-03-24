@@ -476,6 +476,160 @@ class ImageTextClassifier(nn.Module):
         # 4. MM embedding and predict
         preds = self.classifier(x_mm)
         return preds, x_mm
+    
+class SDWPFRegression(nn.Module):
+    def __init__(
+        self, 
+        model1_input_dim: int,     # Acc data input dim
+        model2_input_dim: int,    # Gyro data input dim
+        d_hid: int=128,         # Hidden Layer size
+        n_filters: int=32,      # number of filters
+        en_att: bool=False,     # Enable self attention or not
+        att_name: str='',       # Attention Name
+        d_head: int=6           # Head dim
+    ):
+        super(SDWPFRegression, self).__init__()
+        self.dropout_p = 0.1
+        self.en_att = en_att
+        self.att_name = att_name
+        
+        # Conv Encoder module
+        self.model1_conv = Conv1dEncoder(
+            input_dim=model1_input_dim, 
+            n_filters=n_filters, 
+            dropout=self.dropout_p, 
+        )
+        
+        self.model2_conv = Conv1dEncoder(
+            input_dim=model2_input_dim, 
+            n_filters=n_filters, 
+            dropout=self.dropout_p, 
+        )
+        
+        # RNN module
+        self.model1_rnn = nn.GRU(
+            input_size=n_filters*4, 
+            hidden_size=d_hid, 
+            num_layers=1, 
+            batch_first=True, 
+            dropout=self.dropout_p, # 输入输出的第一维是否为 batch_size
+            bidirectional=False     # 是否使用双向 GRU
+        )
+
+        self.model2_rnn = nn.GRU(
+            input_size=n_filters*4, 
+            hidden_size=d_hid, 
+            num_layers=1, 
+            batch_first=True, 
+            dropout=self.dropout_p, 
+            bidirectional=False
+        )
+
+        # Self attention module
+        if self.att_name == "multihead":
+            self.model1_att = nn.MultiheadAttention(
+                embed_dim=d_hid, 
+                num_heads=4, 
+                dropout=self.dropout_p
+            )
+            
+            self.model2_att = nn.MultiheadAttention(
+                embed_dim=d_hid, 
+                num_heads=4, 
+                dropout=self.dropout_p
+            )
+        elif self.att_name == "base":
+            self.model1_att = BaseSelfAttention(d_hid=d_hid)
+            self.model2_att = BaseSelfAttention(d_hid=d_hid)
+        elif self.att_name == "fuse_base":
+            self.fuse_att = FuseBaseSelfAttention(
+                d_hid=d_hid,
+                d_head=d_head
+            )
+        
+        # regression head
+        if self.en_att and self.att_name == "fuse_base":
+            self.regression = nn.Sequential(
+                nn.Linear(d_hid*d_head, 128),
+                nn.ReLU(),
+                nn.Dropout(self.dropout_p),
+                nn.Linear(128, 64),
+                nn.ReLU(),
+                nn.Dropout(self.dropout_p),
+                nn.Linear(64, 1)
+            )
+        else:
+            # Projection head
+            self.model1_proj = nn.Linear(d_hid, d_hid//2)
+            self.model2_proj = nn.Linear(d_hid, d_hid//2)
+            
+            # regression head
+            self.regression = nn.Sequential(
+                nn.Linear(d_hid*2, 64),
+                nn.ReLU(),
+                nn.Linear(64, 1)
+            )
+        
+        self.init_weight()
+
+
+    def init_weight(self):
+        for m in self._modules:
+            if type(m) == nn.Linear:
+                torch.nn.init.xavier_uniform(m.weight)
+                m.bias.data.fill_(0.01)
+            if type(m) == nn.Conv1d:
+                torch.nn.init.xavier_uniform(m.weight)
+                m.bias.data.fill_(0.01)
+
+    def forward(self, x_model1, x_model2, l_a, l_b):
+        # 1. Conv forward
+        x_model1 = self.model1_conv(x_model1)
+        x_model2 = self.model2_conv(x_model2)
+        # 2. Rnn forward
+        x_model1, _ = self.model1_rnn(x_model1)
+        x_model2, _ = self.model2_rnn(x_model2)
+
+        # Length of the signal
+        l_a = l_a // 8
+        l_b = l_b // 8
+        
+        # 3. Attention
+        if self.en_att:
+            if self.att_name == 'multihead':
+                x_model1, _ = self.model1_att(x_model1, x_model1, x_model1)
+                x_model2, _ = self.model2_att(x_model2, x_model2, x_model2)
+                # 4. Average pooling
+                x_model1 = torch.mean(x_model1, axis=1)
+                x_model2 = torch.mean(x_model2, axis=1)
+            elif self.att_name == 'base':
+                # get attention output
+                x_model1 = self.model1_att(x_model1)
+                x_model2 = self.model2_att(x_model2)
+            elif self.att_name == "fuse_base":
+                # get attention output
+                x_mm = torch.cat((x_model1, x_model2), dim=1)
+                x_mm = self.fuse_att(
+                    x_mm, 
+                    val_a=l_a, 
+                    val_b=l_b, 
+                    a_len=x_model1.shape[1]
+                )
+        else:
+            # 4. Average pooling
+            x_model1 = torch.mean(x_model1, axis=1)
+            x_model2 = torch.mean(x_model2, axis=1)
+            x_mm = torch.cat((x_model1, x_model2), dim=1)
+
+        # 5. Projection
+        if self.en_att and self.att_name != "fuse_base":
+            x_model1 = self.model1_proj(x_model1)
+            x_model2 = self.model2_proj(x_model2)
+            x_mm = torch.cat((x_model1, x_model2), dim=1)
+        
+        # 6. MM embedding and predict
+        preds = self.regression(x_mm)
+        return preds, x_mm
 
 class HARClassifier(nn.Module):
     def __init__(

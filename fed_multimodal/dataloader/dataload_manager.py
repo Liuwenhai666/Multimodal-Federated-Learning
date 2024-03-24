@@ -174,6 +174,33 @@ class DataloadManager():
                 'V1_to_V6', 
                 args.dataset
             )
+        # 百度风力发电数据集
+        if self.args.dataset in ['SDWPF']:
+            self.get_baidukdd_model1_feat_path()
+            self.get_baidukdd_model2_feat_path()
+            
+    def get_baidukdd_model1_feat_path(self):
+        """
+        Load baidkdd feature path
+        """
+        self.baidukdd_model1_feat_path = Path(self.args.data_dir).joinpath(
+            'feature', 
+            'model1', 
+            self.args.dataset
+            )
+        return Path(self.baidukdd_model1_feat_path)
+    
+    def get_baidukdd_model2_feat_path(self):
+        """
+        Load baidkdd feature path
+        """
+        self.baidukdd_model2_feat_path = Path(self.args.data_dir).joinpath(
+            'feature', 
+            'model2', 
+            self.args.dataset
+            )
+        return Path(self.baidukdd_model2_feat_path)
+        
             
     def get_audio_feat_path(self):
         """
@@ -300,6 +327,10 @@ class DataloadManager():
             data_path = self.text_feat_path
         elif self.args.dataset == "ptb-xl":
             data_path = self.v1_to_v6_path
+        elif self.args.dataset == "SDWPF":  # 百度风力发电数据集
+            data_path = self.baidukdd_model1_feat_path.joinpath(
+                f'alpha{self.args.agg_batch}'
+            )
         self.client_ids = [id.split('.pkl')[0] for id in os.listdir(str(data_path))]
         self.client_ids.sort()
         
@@ -395,6 +426,48 @@ class DataloadManager():
             )
         with open(str(data_path), "rb") as f: 
             data_dict = pickle.load(f)
+        return data_dict
+    
+    def load_baidukdd_model1_feat(
+            self, 
+            client_id: str
+        ) -> dict:
+        """Load model1 feature data for SDWPF
+        Args:
+            client_id (str): client id
+        Returns:
+            dict: _description_
+        """
+        if self.args.dataset == "SDWPF":
+            data_path = self.baidukdd_model1_feat_path.joinpath(
+                f'alpha{self.args.agg_batch}',
+                f'{client_id}.pkl'
+            )
+        else :
+            print("No dataset named:" + f"{self.args.dataset}")
+            return dict()
+        with open(str(data_path), "rb") as f: data_dict = pickle.load(f)
+        return data_dict
+
+    def load_baidukdd_model2_feat(
+            self, 
+            client_id: str
+        ) -> dict:
+        """Load model2 feature data for SDWPF
+        Args:
+            client_id (str): client id
+        Returns:
+            dict: _description_
+        """
+        if self.args.dataset == "SDWPF":
+            data_path = self.baidukdd_model2_feat_path.joinpath(
+                f'alpha{self.args.agg_batch}',
+                f'{client_id}.pkl'
+            )
+        else :
+            print("No dataset named:" + f"{self.args.dataset}")
+            return dict()
+        with open(str(data_path), "rb") as f: data_dict = pickle.load(f)
         return data_dict
     
     def load_acc_feat(
