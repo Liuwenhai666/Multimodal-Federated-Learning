@@ -17,7 +17,7 @@ from fed_multimodal.model.mm_models import SDWPFRegression
 from fed_multimodal.dataloader.dataload_manager import DataloadManager
 
 from fed_multimodal.trainers.fed_rs_trainer import ClientFedRS
-from fed_multimodal.trainers.fed_avg_trainer import ClientFedAvg
+from fed_multimodal.trainers.fed_avg_trainer import ClientFedAvgForRegression
 from fed_multimodal.trainers.scaffold_trainer import ClientScaffold
 
 # Define logging console
@@ -296,7 +296,7 @@ if __name__ == '__main__':
     save_result_dict = dict()
 
     if args.fed_alg in ['fed_avg', 'fed_prox', 'fed_opt']:
-        Client = ClientFedAvg
+        Client = ClientFedAvgForRegression
     elif args.fed_alg in ['scaffold']:
         Client = ClientScaffold
     elif args.fed_alg in ['fed_rs']:
@@ -328,7 +328,7 @@ if __name__ == '__main__':
             default_feat_shape_b=np.array([12, 5]) 
         )
         
-    for fold_idx in range(1, 6):
+    for fold_idx in range(1, 2):
         client_ids = [client_id for client_id in dm.client_ids if client_id not in ['dev', 'test']]
         
         num_of_clients = len(client_ids)
@@ -377,4 +377,90 @@ if __name__ == '__main__':
         # 再次设置随机数种子
         set_seed(8*fold_idx)
         
+        for epoch in range(int(args.num_epochs)):
+            server.initialize_epoch_updates(epoch)
+            # 1. 本地训练，fed_avg中的返回权重，fed_sgd中的返回梯度
+            skip_client_ids = list()
+            
+            for idx in server.clients_list[epoch]:
+                client_id = client_ids[idx]
+                dataloader = dataloader_dict[client_id]
+                
+                if dataloader is None:
+                    skip_client_ids.append(client_id)
+                    continue
+                
+                client = Client(
+                    args=args,
+                    device=device,
+                    criterion=criterion,
+                    dataloader=dataloader,
+                    model=copy.deepcopy(server.global_model)
+                )
+                
+                client.update_weights()
+                    # server append updates
+                server.save_train_updates(
+                    copy.deepcopy(client.get_parameters()), 
+                    client.result['sample'], 
+                    client.result
+                    )
+                del client
+                
+            # 服务器一次运行完成
+            logging.info(f'Client Round: {epoch}, Skip client {skip_client_ids}')
+            
+            # 2. 聚合，加载新的全局权重
+            if len(server.num_samples_list) == 0: continue
+            server.average_weights()
+            logging.info('---------------------------------------------------------')
+            server.log_regression_result(
+                data_split='train'
+            )
+            
+            if epoch % args.test_frequency == 0:
+                with torch.no_grad():
+                    # 3. Perform the validation on dev set
+                    server.inference_regression(dataloader_dict['dev'])
+                    server.result_dict[epoch]['dev'] = server.result
+                    server.log_regression_result(
+                        data_split='dev'
+                    )
+
+                    # 4. Perform the test on holdout set
+                    server.inference_regression(dataloader_dict['test'])
+                    server.result_dict[epoch]['test'] = server.result
+                    server.log_regression_result(
+                        data_split='test'
+                    )
+                
+                logging.info('---------------------------------------------------------')
+                server.log_epoch_result_regression()
+            logging.info('---------------------------------------------------------')
+            
+        # Performance save code
+        save_result_dict[f'fold{fold_idx}'] = server.summarize_dict_results_regression()
         
+        # output to results
+        server.save_json_file(
+            save_result_dict, 
+            save_json_path.joinpath('result.json')
+        )
+
+    # Calculate the average of the 5-fold experiments
+    save_result_dict['average'] = dict()
+    for metric in ['loss']:
+        result_list = list()
+        for key in save_result_dict:
+            if metric not in save_result_dict[key]: 
+                continue
+            result_list.append(save_result_dict[key][metric])
+        save_result_dict['average'][metric] = np.nanmean(result_list)
+    
+    # dump the dictionary
+    server.save_json_file(
+        save_result_dict, 
+        save_json_path.joinpath('result.json')
+    )
+
+            

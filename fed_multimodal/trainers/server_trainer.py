@@ -296,6 +296,42 @@ class Server(object):
                 self.result = self.eval.classification_summary()
         else:
             self.result = self.eval.multilabel_summary()
+            
+    def inference_regression(self, dataloader):
+        self.global_model.eval()
+
+        # initialize eval
+        self.eval = EvalMetric(self.multilabel)
+        for batch_idx, batch_data in enumerate(dataloader):
+                
+            self.global_model.zero_grad()
+            if self.args.modality == "multimodal":
+                x_a, x_b, l_a, l_b, y = batch_data
+                x_a, x_b, y = x_a.to(self.device), x_b.to(self.device), y.to(self.device)
+                l_a, l_b = l_a.to(self.device), l_b.to(self.device)
+                
+                # forward
+                outputs, _ = self.global_model(
+                    x_a.float(), x_b.float(), l_a, l_b
+                )
+            else:
+                x, l, y = batch_data
+                x, l, y = x.to(self.device), l.to(self.device), y.to(self.device)
+                
+                # forward
+                outputs, _ = self.global_model(
+                    x.float(), l
+                )
+        
+            loss = self.criterion(outputs, y.float())
+            
+            # save results
+            self.eval.append_regression_results(
+                y, outputs, loss
+            )
+            
+        # epoch train results
+        self.result = self.eval.regression_summary()
 
     def log_classification_result(
             self, 
@@ -335,6 +371,22 @@ class Server(object):
         self.log_writer.add_scalar(f'F1/{data_split}', f1, self.epoch)
         self.log_writer.add_scalar(f'Top5_Acc/{data_split}', top5_acc, self.epoch)
         if metric == 'auc' and data_split != 'train': self.log_writer.add_scalar(f'AUC/{data_split}', auc, self.epoch)
+        
+        
+    def log_regression_result(
+            self, 
+            data_split: str, 
+        ):
+        if data_split == 'train':
+            loss = np.mean([data['loss'] for data in self.result_dict[self.epoch][data_split]])
+        else:
+            loss = self.result_dict[self.epoch][data_split]['loss']
+
+        # loggin console
+        if data_split == 'train': logging.info(f'Current Round: {self.epoch}')
+        logging.info(f'{data_split} set, Loss: {loss:.3f}')
+        # loggin to folder
+        self.log_writer.add_scalar(f'Loss/{data_split}', loss, self.epoch)
         
     def log_multilabel_result(
         self, 
@@ -445,6 +497,35 @@ class Server(object):
             logging.info(f'Best dev UAR {best_dev_uar:.2f}%, Top-1 Acc {best_dev_acc:.2f}%')
             logging.info(f'Best test UAR {best_test_uar:.2f}%, Top-1 Acc {best_test_acc:.2f}%')
 
+    def log_epoch_result_regression(
+        self, 
+    ):
+        if len(self.best_test_dict) == 0:
+            self.best_epoch = self.epoch
+            self.best_dev_dict = self.result_dict[self.epoch]['dev']
+            self.best_test_dict = self.result_dict[self.epoch]['test']
+
+        if self.result_dict[self.epoch]['dev']["loss"] < self.best_dev_dict["loss"]:
+            # Save best model and training history
+            self.best_epoch = self.epoch
+            self.best_dev_dict = self.result_dict[self.epoch]['dev']
+            self.best_test_dict = self.result_dict[self.epoch]['test']
+            torch.save(
+                deepcopy(self.global_model.state_dict()), 
+                str(self.result_path.joinpath('model.pt'))
+            )
+        
+        # log dev results
+        best_dev_mse = self.best_dev_dict['loss']
+
+        # log test results
+        best_test_mse = self.best_test_dict['loss']
+        
+        # logging
+        logging.info(f'Best epoch {self.best_epoch}')
+        logging.info(f'Best dev MSE {best_dev_mse:.2f}%')
+        logging.info(f'Best test MSE {best_test_mse:.2f}%')
+
     def summarize_results(self):
         row_df = pd.DataFrame(index=[f'fold{self.fold_idx}'])
         row_df['acc']  = self.best_test_dict['acc']
@@ -465,6 +546,11 @@ class Server(object):
             if "auc" in self.best_test_dict: result['auc'] = self.best_test_dict['auc']
         else:
             result['macro_f'] = self.best_test_dict['macro_f']
+        return result
+    
+    def summarize_dict_results_regression(self):
+        result = dict()
+        result['loss'] = self.best_test_dict['loss']
         return result
 
     def average_weights(self):

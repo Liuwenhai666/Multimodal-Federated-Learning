@@ -35,6 +35,18 @@ class EvalMetric(object):
             self.top_k_list.append(top_k_predictions[idx])
         self.loss_list.append(loss.item())
         
+    def append_regression_results(
+        self, 
+        labels,
+        outputs,
+        loss
+    ):
+        predictions = np.argmax(outputs.detach().cpu().numpy(), axis=1)
+        for idx in range(len(predictions)):
+            self.pred_list.append(predictions[idx])
+            self.truth_list.append(labels.detach().cpu().numpy()[idx])
+        self.loss_list.append(loss.item())
+        
         
     def append_multilabel_results(
         self, 
@@ -61,6 +73,16 @@ class EvalMetric(object):
         result_dict["sample"] = len(self.truth_list)
         result_dict['f1'] = f1_score(self.truth_list, self.pred_list, average='macro')*100
         if return_auc: result_dict['auc'] = roc_auc_score(self.truth_list, self.pred_list)*100
+        return result_dict
+    
+    def regression_summary(
+        self, 
+        return_auc: bool=False
+    ):
+        result_dict = dict()
+        
+        result_dict["loss"] = np.mean(self.loss_list)
+        result_dict["sample"] = len(self.truth_list)
         return result_dict
 
     def multilabel_summary(self):

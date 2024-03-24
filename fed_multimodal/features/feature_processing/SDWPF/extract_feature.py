@@ -113,12 +113,13 @@ if __name__ == '__main__':
     df.fillna(method="pad",inplace=True)
     # 删除 Day 和 Tmstamp 两列
     # df.drop(columns=["Day", "Tmstamp"], inplace=True)
+    # df.astype("float")
     # 按 TurbID 分组
     groups = df.groupby("TurbID")
 
     # 将分组后的数据格式转换成 NumPy
     data_by_turbid = {
-        turbid: group.drop(columns=["TurbID", "Day", "Tmstamp"])    # 删除 Day 和 Tmstamp 两列
+        turbid: group.drop(columns=["TurbID"])    # 删除 Day 和 Tmstamp 两列
         for turbid, group in groups
     }
 
@@ -158,10 +159,6 @@ if __name__ == '__main__':
     for i, _ in tqdm(model1_dict.items()):
         model1_dict_train.append(list())
         model2_dict_train.append(list())
-        model1_dict_val.append(list())
-        model2_dict_val.append(list())
-        model1_dict_test.append(list())
-        model2_dict_test.append(list())
         train_index, val_index, test_index = split_train_dev_test(np.arange(len_total))
         
         for j in train_index:
@@ -173,14 +170,14 @@ if __name__ == '__main__':
         for j in test_index:
             tmp1 = [i, model1_dict[i][j*agg_batch,4], model1_dict[i][j*agg_batch:(j+1)*agg_batch,0:4]]
             tmp2 = [i, model2_dict[i][j*agg_batch,5], model2_dict[i][j*agg_batch:(j+1)*agg_batch,0:5]]
-            model1_dict_test[i-1].append(tmp1)
-            model2_dict_test[i-1].append(tmp2)
+            model1_dict_test.append(tmp1)
+            model2_dict_test.append(tmp2)
             
         for j in val_index:
             tmp1 = [i, model1_dict[i][j*agg_batch,4], model1_dict[i][j*agg_batch:(j+1)*agg_batch,0:4]]
             tmp2 = [i, model2_dict[i][j*agg_batch,5], model2_dict[i][j*agg_batch:(j+1)*agg_batch,0:5]]
-            model1_dict_val[i-1].append(tmp1)
-            model2_dict_val[i-1].append(tmp2)
+            model1_dict_val.append(tmp1)
+            model2_dict_val.append(tmp2)
             
         with open(model1_output_data_path.joinpath(f'{i}.pkl'), 'wb') as handle:
             pickle.dump(model1_dict_train[i-1], handle, protocol=pickle.HIGHEST_PROTOCOL)
