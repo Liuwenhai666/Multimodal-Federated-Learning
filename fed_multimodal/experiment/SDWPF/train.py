@@ -13,7 +13,7 @@ from pathlib import Path
 
 from fed_multimodal.constants import constants
 from fed_multimodal.trainers.server_trainer import Server
-from fed_multimodal.model.mm_models import SDWPFRegression
+from fed_multimodal.model.mm_models import SDWPFRegression, DistAELoss
 from fed_multimodal.dataloader.dataload_manager import DataloadManager
 
 from fed_multimodal.trainers.fed_rs_trainer import ClientFedRS
@@ -336,7 +336,7 @@ if __name__ == '__main__':
         
         set_seed(8*fold_idx)
         
-        criterion = nn.MSELoss().to(device)
+        criterion = DistAELoss(alph=1e-3, Lossfunc=nn.MSELoss()).to(device)
         
         # 网络模型
         global_model = SDWPFRegression(

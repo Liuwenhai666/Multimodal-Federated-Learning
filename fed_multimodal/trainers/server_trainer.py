@@ -17,7 +17,6 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-
 class Server(object):
     def __init__(
         self, 
@@ -262,7 +261,7 @@ class Server(object):
                 l_a, l_b = l_a.to(self.device), l_b.to(self.device)
                 
                 # forward
-                outputs, _ = self.global_model(
+                outputs, xmm = self.global_model(
                     x_a.float(), x_b.float(), l_a, l_b
                 )
             else:
@@ -270,13 +269,15 @@ class Server(object):
                 x, l, y = x.to(self.device), l.to(self.device), y.to(self.device)
                 
                 # forward
-                outputs, _ = self.global_model(
+                outputs, xmm = self.global_model(
                     x.float(), l
                 )
         
             if not self.multilabel: 
                 outputs = torch.log_softmax(outputs, dim=1)
-            loss = self.criterion(outputs, y)
+
+                
+            loss = self.criterion(outputs, y, xmm)
             
             # save results
             if not self.multilabel: 
@@ -311,7 +312,7 @@ class Server(object):
                 l_a, l_b = l_a.to(self.device), l_b.to(self.device)
                 
                 # forward
-                outputs, _ = self.global_model(
+                outputs, xmm = self.global_model(
                     x_a.float(), x_b.float(), l_a, l_b
                 )
             else:
@@ -319,11 +320,11 @@ class Server(object):
                 x, l, y = x.to(self.device), l.to(self.device), y.to(self.device)
                 
                 # forward
-                outputs, _ = self.global_model(
+                outputs, xmm = self.global_model(
                     x.float(), l
                 )
         
-            loss = self.criterion(outputs, y.float())
+            loss = self.criterion(outputs, y.float(), xmm)
             
             # save results
             self.eval.append_regression_results(

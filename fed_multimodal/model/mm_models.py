@@ -16,6 +16,22 @@ from torch.nn.utils.rnn import pack_padded_sequence
 # typing import
 from typing import Dict, Iterable, Optional
 
+class DistAELoss(nn.Module):
+    def __init__(self, alph=0.01, Lossfunc=nn.NLLLoss()):
+        super(DistAELoss,self).__init__()
+        self.NLLLoss = Lossfunc
+        self.alph = torch.tensor(alph)
+        
+    def forward(self, outputs, y, xmm):
+        # print(xmm.shape)
+        len_xmm = xmm.shape[1] // 2
+        loss1 = self.NLLLoss(outputs, y)
+        loss2 = torch.div(torch.pow(torch.sub(xmm[:,:len_xmm],xmm[:,len_xmm:]),2), torch.pow(xmm[:,:len_xmm],2) + torch.pow(xmm[:,len_xmm:],2)).mean()
+        
+        # print(loss1, " ===== ", loss2)
+        return loss1 + self.alph * loss2
+        
+
 
 class MMActionClassifier(nn.Module):
     def __init__(
@@ -494,21 +510,21 @@ class SDWPFRegression(nn.Module):
         self.att_name = att_name
         
         # Conv Encoder module
-        self.model1_conv = Conv1dEncoder(
-            input_dim=model1_input_dim, 
-            n_filters=n_filters, 
-            dropout=self.dropout_p, 
-        )
+        # self.model1_conv = Conv1dEncoder(
+        #     input_dim=model1_input_dim, 
+        #     n_filters=n_filters, 
+        #     dropout=self.dropout_p, 
+        # )
         
-        self.model2_conv = Conv1dEncoder(
-            input_dim=model2_input_dim, 
-            n_filters=n_filters, 
-            dropout=self.dropout_p, 
-        )
+        # self.model2_conv = Conv1dEncoder(
+        #     input_dim=model2_input_dim, 
+        #     n_filters=n_filters, 
+        #     dropout=self.dropout_p, 
+        # )
         
         # RNN module
         self.model1_rnn = nn.GRU(
-            input_size=n_filters*4, 
+            input_size=model1_input_dim, 
             hidden_size=d_hid, 
             num_layers=1, 
             batch_first=True, 
@@ -517,7 +533,7 @@ class SDWPFRegression(nn.Module):
         )
 
         self.model2_rnn = nn.GRU(
-            input_size=n_filters*4, 
+            input_size=model2_input_dim, 
             hidden_size=d_hid, 
             num_layers=1, 
             batch_first=True, 
@@ -584,8 +600,8 @@ class SDWPFRegression(nn.Module):
 
     def forward(self, x_model1, x_model2, l_a, l_b):
         # 1. Conv forward
-        x_model1 = self.model1_conv(x_model1)
-        x_model2 = self.model2_conv(x_model2)
+        # x_model1 = self.model1_conv(x_model1)
+        # x_model2 = self.model2_conv(x_model2)
         # 2. Rnn forward
         x_model1, _ = self.model1_rnn(x_model1)
         x_model2, _ = self.model2_rnn(x_model2)

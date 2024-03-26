@@ -12,7 +12,7 @@ from pathlib import Path
 
 from fed_multimodal.constants import constants
 from fed_multimodal.trainers.server_trainer import Server
-from fed_multimodal.model.mm_models import SERClassifier
+from fed_multimodal.model.mm_models import SERClassifier, DistAELoss
 from fed_multimodal.dataloader.dataload_manager import DataloadManager
 
 from fed_multimodal.trainers.fed_rs_trainer import ClientFedRS
@@ -313,7 +313,7 @@ if __name__ == '__main__':
         # set seeds
         set_seed(8*fold_idx)
         # loss function
-        criterion = nn.NLLLoss().to(device)
+        criterion = DistAELoss(alph=0.01).to(device)
         # Define the model
         global_model = SERClassifier(
             num_classes=constants.num_class_dict[args.dataset],

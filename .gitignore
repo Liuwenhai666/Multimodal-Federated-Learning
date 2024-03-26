@@ -131,8 +131,11 @@ dmypy.json
 *log*
 result/*
 
+
+mmlab/
 # data
 fed_multimodal/data/**
 !fed_multimodal/data/*.sh
+!fed_multimodal/data/*.py
 # fed_multimodal/result/**
 fed_multimodal/output/**
