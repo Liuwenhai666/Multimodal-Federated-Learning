@@ -90,6 +90,7 @@ class ClientFedAvg(object):
                 optimizer.zero_grad()
                 if self.args.modality == "multimodal":
                     x_a, x_b, l_a, l_b, y = batch_data
+                    # print(x_a.shape)
                     x_a, x_b, y = x_a.to(self.device), x_b.to(self.device), y.to(self.device)
                     l_a, l_b = l_a.to(self.device), l_b.to(self.device)
                     
@@ -213,6 +214,7 @@ class ClientFedAvgForRegression(object):
                 optimizer.zero_grad()
                 if self.args.modality == "multimodal":
                     x_a, x_b, l_a, l_b, y = batch_data
+                    # print(x_a.shape)
                     x_a, x_b, y = x_a.to(self.device), x_b.to(self.device), y.to(self.device)
                     l_a, l_b = l_a.to(self.device), l_b.to(self.device)
                     
@@ -241,7 +243,7 @@ class ClientFedAvgForRegression(object):
                 # 模型 self.model 的所有参数进行梯度裁剪，并将梯度范数限制在 10.0 以内
                 torch.nn.utils.clip_grad_norm_(
                     self.model.parameters(), 
-                    10.0
+                    100.0
                 )
                 optimizer.step()
                 

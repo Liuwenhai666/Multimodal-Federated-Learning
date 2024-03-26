@@ -99,7 +99,7 @@ if __name__ == '__main__':
     output_data_path = Path(args.output_dir).joinpath("feature",args.dataset)
     Path.mkdir(output_data_path, parents=True, exist_ok=True)
     
-    agg_batch = 12  # 两个小时
+    agg_batch = 12  # 12个小时
     model1_output_data_path = Path(args.output_dir).joinpath('feature', 'model1', args.dataset, f'alpha{agg_batch}')
     model2_output_data_path = Path(args.output_dir).joinpath('feature', 'model2', args.dataset, f'alpha{agg_batch}')
     Path.mkdir(model1_output_data_path, parents=True, exist_ok=True)
@@ -137,13 +137,13 @@ if __name__ == '__main__':
         data_by_turbid[turbid] = data_by_turbid[turbid][['Wspd','Etmp','Itmp','Prtv','Wdir','Ndir','Pab1','Pab2','Pab3','Patv']].reset_index(drop=True)
         
         # 预测之后两个小时的发电量
-        for i in range(data_by_turbid[turbid].shape[0]):
+        # for i in range(data_by_turbid[turbid].shape[0]):
             
-            if i % agg_batch != 0: continue
-            if i > data_by_turbid[turbid].shape[0] - agg_batch + 1: break
+        #     if i % agg_batch != 0: continue
+        #     if i > data_by_turbid[turbid].shape[0] - agg_batch + 1: break
             
-            # print(i-agg_batch,i-1)
-            data_by_turbid[turbid].loc[i-agg_batch:i-1,"Patv"] = data_by_turbid[turbid].at[i,"Patv"]
+        #     # print(i-agg_batch,i-1)
+        #     data_by_turbid[turbid].loc[i-agg_batch:i-1,"Patv"] = data_by_turbid[turbid].at[i,"Patv"]
             
         model1_dict[turbid] = data_by_turbid[turbid][['Wspd','Etmp','Itmp','Prtv','Patv']].to_numpy()
         model2_dict[turbid] = data_by_turbid[turbid][['Wdir','Ndir','Pab1','Pab2','Pab3','Patv']].to_numpy()

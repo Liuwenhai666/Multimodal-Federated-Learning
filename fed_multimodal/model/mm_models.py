@@ -565,7 +565,7 @@ class SDWPFRegression(nn.Module):
             
             # regression head
             self.regression = nn.Sequential(
-                nn.Linear(d_hid*2, 64),
+                nn.Linear(d_hid, 64),
                 nn.ReLU(),
                 nn.Linear(64, 1)
             )
@@ -717,7 +717,7 @@ class HARClassifier(nn.Module):
             
             # Classifier head
             self.classifier = nn.Sequential(
-                nn.Linear(d_hid*2, 64),
+                nn.Linear(d_hid, 64),
                 nn.ReLU(),
                 nn.Linear(64, num_classes)
             )

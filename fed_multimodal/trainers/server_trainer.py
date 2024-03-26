@@ -523,8 +523,8 @@ class Server(object):
         
         # logging
         logging.info(f'Best epoch {self.best_epoch}')
-        logging.info(f'Best dev MSE {best_dev_mse:.2f}%')
-        logging.info(f'Best test MSE {best_test_mse:.2f}%')
+        logging.info(f'Best dev MSE {best_dev_mse:.2f}')
+        logging.info(f'Best test MSE {best_test_mse:.2f}')
 
     def summarize_results(self):
         row_df = pd.DataFrame(index=[f'fold{self.fold_idx}'])

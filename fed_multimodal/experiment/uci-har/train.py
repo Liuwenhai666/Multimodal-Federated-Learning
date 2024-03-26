@@ -13,7 +13,7 @@ from pathlib import Path
 
 from fed_multimodal.constants import constants
 from fed_multimodal.trainers.server_trainer import Server
-from fed_multimodal.model.mm_models import HARClassifier
+from fed_multimodal.model.mm_models import HARClassifier, DistAELoss
 from fed_multimodal.dataloader.dataload_manager import DataloadManager
 
 from fed_multimodal.trainers.fed_rs_trainer import ClientFedRS
@@ -321,9 +321,9 @@ if __name__ == '__main__':
         logging.info("num_of_clients: " + str(num_of_clients))
         
         # set seeds
-        set_seed(8*fold_idx)
+        set_seed(6*fold_idx)
         # loss function
-        criterion = nn.NLLLoss().to(device)
+        criterion = DistAELoss(alph=0.01).to(device)
         # Define the model
         global_model = HARClassifier(
             num_classes=constants.num_class_dict[args.dataset],         # Number of classes 
@@ -367,7 +367,7 @@ if __name__ == '__main__':
         )
         
         # set seeds again
-        set_seed(8*fold_idx)
+        set_seed(6*fold_idx)
         # Training steps
         for epoch in range(int(args.num_epochs)):
             # define list varibles that saves the weights, loss, num_sample, etc.

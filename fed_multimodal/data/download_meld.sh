@@ -31,7 +31,7 @@ echo =========Begin Extracting MELD.Raw/test.tar.gz==============
 tar -x -f test.tar.gz
 echo =========Done Extracting MELD.Raw/test.tar.gz===============
 
-
+cd MELD.Raw
 cd train_splits
 NUM_FILES=$(find ./ -name "*.mp4" | wc -l)
 mkdir -p "waves"
